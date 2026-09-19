@@ -13,21 +13,34 @@ months rather than days.
 ## How it works
 
 ```
- [peripheral]                 [central]                        [AWS]
- outdoors, battery            indoors, mains
-                                                          ┌─> IoT Core
- wakes every 10 min           scans continuously           │
- reads BME280        BLE      decodes the advertisement    │
- advertises ~0.5 s  ───────>  republishes it as JSON  ─────┤
- deep sleeps                  + publishes its own          │
-                              reading every 10 min         └─> IoT rule
-                                                                 │
-                                                                 v
- [bedroom] ────────────────────── publishes directly ──────> DynamoDB
- mains, own sensor                                                │
-                                                                  v
-                                                        Lambda -> dashboard
+ [peripheral]                     [central]
+ outdoors, battery                indoors, mains
+
+ wakes every 10 min               scans continuously
+ reads BME280                     decodes the advertisement
+ advertises ~0.5 s ───BLE──────>  republishes it as JSON
+ deep sleeps                      + publishes its own reading every 10 min
+                                        │
+                                        │
+ [bedroom]                              │   MQTT over TLS
+ mains, own sensor ─────────────────────┤   (device certificate)
+ (own Thing, cert and own topic)        │
+                                        v
+                             AWS IoT Core (message broker)
+                                        │   IoT rule: from 'home/+/reading'
+                                        v
+                                   DynamoDB
+                                        │
+                                        v
+                          Lambda (Function URL) ──> dashboard
 ```
+
+**No device talks to DynamoDB.** Each board holds a certificate whose policy
+allows only `iot:Connect` on `client/<board>*` and `iot:Publish` on
+`topic/home/<board>/*`. The database write is performed by the IoT rule, under
+an IAM role that only the IoT service can assume. A compromised board could
+publish bogus readings to its own topic, but it has no way to read or write the
+table.
 
 The outdoor reading travels as a **packed binary struct** inside the BLE
 advertisement's manufacturer-data field — advertisements only have ~24 usable
@@ -37,7 +50,8 @@ infrastructure was needed for the outdoor board: it reuses the indoor
 certificate and is distinguished by the payload's `board` field.
 
 The bedroom board is independent — own Thing, own certificate, own topic — and
-talks to AWS directly. It exists because the relay path only makes sense for a
+publishes to AWS IoT over its own MQTT connection rather than relaying through
+the central board. It exists because the relay path only makes sense for a
 board that can't afford a radio of its own.
 
 ## Hardware

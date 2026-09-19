@@ -176,7 +176,9 @@ reuses the `weather-indoor` certificate; the outdoor reading goes to
 deliberate choice: the outdoor sensor's only path to AWS is through the central
 board anyway, so a separate certificate would add complexity for no isolation
 benefit. The bedroom board has its own Thing/certificate and its own topic
-(`home/weather-bedroom/reading`), since it talks to AWS directly.
+(`home/weather-bedroom/reading`), since it has its own MQTT connection to AWS
+IoT rather than relaying through the central board. It still never touches
+DynamoDB: it publishes to its topic and the IoT rule performs the write.
 
 ### Wire payload
 
