@@ -155,6 +155,30 @@ new certificate** — certs are tied to the account/region's IoT Core instance
 and don't carry over. A custom MQTT domain (`mqtt.alisonbutcher.com`) was
 considered and rejected: real setup cost for no gain.
 
+### Old `us-east-1` setup (retired)
+
+The original manual CLI build lived in `us-east-1` and was left running after
+the migration. It was fully decommissioned once the region move was trusted.
+Removed: the old IoT rule, two **still-ACTIVE** device certificates (live
+credentials for a dead endpoint, with an *enabled* rule behind them — the
+actual reason this was worth doing), two Things, three policies (one of them a
+`weather-indoor-test-wildcard` test artefact), the orphaned
+`IoTToDynamoDBRole`, the old `WeatherReadings` table and the `AWSIotLogsV2`
+log group. The table's 281 items were dumped to
+`weather-infra/weather-readings-us-east-1-backup.json` first, since deleting a
+table is irreversible.
+
+**Kept deliberately**: `IoTLoggingRole`, which is *shared* — both regions point
+at it for IoT v2 logging, so deleting it would have broken logging in the live
+region. Also kept: both CDK stacks, the CDK bootstrap asset buckets, and the
+`weather-outdoor` partition in the live table.
+
+Two gotchas from the teardown, in case it's ever repeated: `list-principal-things`
+and `list-thing-principals` are inverses but only the latter returned the
+certificate↔Thing attachment (`DeleteCertificate` refuses while a Thing is
+attached), and a policy with more than one version cannot be deleted until
+every non-default version is removed with `delete-policy-version`.
+
 ## `esp32-ble-weather` (BLE relay)
 
 Built to test whether BLE advertising (instead of a full WiFi+TLS handshake
@@ -428,8 +452,9 @@ and bedroom never sleep, so they flash normally.
   `rssi`.
 - DynamoDB TTL + downsampling Lambda (12-month auto-purge, tiered resolution) —
   designed conceptually, not built.
-- Retire the old `us-east-1` manually-created AWS resources once the
-  `ap-southeast-2` CDK-managed setup is fully trusted.
+- Optionally drop IoT Core v2 logging from `DEBUG` to `ERROR` in both regions —
+  it's still on from the original debugging session. Harmless at this message
+  volume, just noisy.
 - **LoRa experiment** (for fun, not need): a second node somewhere genuinely
   remote. LoRa suits this better than BLE — range aside, the 2-second
   advertising window that costs ~82 % of the BLE energy budget is replaced by a
